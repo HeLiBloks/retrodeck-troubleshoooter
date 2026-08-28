@@ -145,6 +145,36 @@ Measured on the machine, after the fix:
   **stale** — the log still holds the run that predates the fix. Launch RetroDECK once for
   the final confirmation that the warnings stop.
 
+### Generalising it: the same sweep over the whole ROM tree
+
+Worth doing once, because this was one instance of a pattern. Group every file by size,
+hash only the groups that collide, and the cost stays trivial — on a 154 GiB tree with
+25,983 files that was 49 candidate groups and 5.7 GiB to hash, finding **27 true duplicate
+groups / 2.55 GiB**. Then the same play-history gate decides each one, and it does **not**
+give the same answer everywhere:
+
+| duplicate | verdict |
+|---|---|
+| A disc image listed as a game beside its own romset | **remove** — unopenable, and the romset already covers it |
+| One game under two filenames, both unplayed | **remove one** — a real duplicate |
+| An arcade romset in both a dedicated system and a full MAME set | **keep both** — see below |
+| Two MAME romset *names* sharing content | **never touch** — see below |
+
+**Keep an arcade romset that appears in both a dedicated folder and a full MAME set.**
+Found 20 such groups (14 atomiswave↔mame, 6 model2↔mame, ~1.7 GiB). This looks identical to
+the GD-ROM case and is not, for three reasons: both copies are **fully functional** where
+naomi's `.chd` entries could not open at all; a MAME set is curated as a *set*, so deleting
+members makes it incomplete and any future set update restores them; and the play history
+shows **both** sides in use — the dedicated folders had 19 plays and a favourite, but
+`demofist` had been played from `mame`. The duplication is the honest cost of keeping a
+complete MAME set alongside per-platform folders, which is a legitimate library structure.
+
+**Never delete one of two MAME romset names that share content.** A romset filename is a
+machine code, not a title: `kizuna`/`kizuna4p`, `3do`/`3dobios`, `gz70sp`/`wg130`,
+`a2000`/`a500` all hold identical bytes and MAME requires **each under its own name** —
+deleting either breaks that machine. This is the same trap as stripping a version suffix
+from a romset name, and a hash match is precisely the evidence that makes it look safe.
+
 ### When this entry does not fit
 
 - **Play history exists on the side you were about to delete.** Then that side is the one in
@@ -157,6 +187,7 @@ Measured on the machine, after the fix:
 
 ### Sightings
 
+- **2026-08-28** — Swept the whole ROM tree for the same pattern: 25983 files / 154 GiB reduced to 49 size-collision groups, hashing 5.7 GiB, giving 27 true duplicate groups / 2.55 GiB. Acted on two: dreamcast 'Sonic Adventure (USA) (Rev A).chd' (871 MiB, byte-identical to the (EnJaFrDeEs) copy, both unplayed) and amigacd32 'myth_history_in_making_v1.0' (a typo of 'in_the_making'), 874 MiB total, re-hashed at deletion, media quarantined. Deliberately kept the 20 arcade groups duplicated between atomiswave/model2 and the full MAME set (~1.7 GiB): both copies work, a MAME set is curated as a set, and demofist had been played from mame. Never touched the MAME romset name-pairs.
 - **2026-08-28** — found by reading the log rather than from a report, while checking why
   `rdtroubleshoot emulation` said the log was clean. It was not: the checker read only
   Ryujinx's `|E|` format and never ES-DE's `[WARN]`, so 124 warnings were invisible. That
