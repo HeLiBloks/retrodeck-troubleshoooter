@@ -192,7 +192,8 @@ def _reach_check(app_id: str, label: str, target: Path, *, need_write: bool) -> 
             f"flatpak override --user --filesystem={target} {app_id}   # adds rw",
         )
     breadth = "whole host" if grant.mode == "all" else grant.raw
-    return Check("PASS", f"{label} sandbox", f"{target} reachable ({breadth})")
+    how = "reachable and writable" if need_write else "reachable"
+    return Check("PASS", f"{label} sandbox", f"{target} {how} ({breadth})")
 
 
 def _overrides_check(app_id: str, label: str) -> Check | None:
@@ -251,7 +252,14 @@ def _sandbox_probe(app_id: str, label: str, target: Path) -> Check:
     if not output:
         return Check("WARN", f"{label} sandbox probe", f"{target} is readable but appears empty inside the sandbox")
     first = ", ".join(output.splitlines()[:3])
-    return Check("PASS", f"{label} sandbox probe", f"read {target} inside the sandbox: {first}")
+    # Deliberately a READ probe: nothing in this tool writes, which is what makes it safe
+    # to run while RetroDECK is open. So it cannot confirm write access - the static grant
+    # above is the only thing that speaks to that, and a real write test is a manual step.
+    return Check(
+        "PASS",
+        f"{label} sandbox probe",
+        f"read (not wrote) {target} inside the sandbox: {first}",
+    )
 
 
 def _eol_runtimes() -> Check | None:

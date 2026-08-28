@@ -88,10 +88,46 @@ answer: it removes the sandbox's value for one directory's sake.
 
 ### Verification
 
-`rdtroubleshoot flatpak` moves from `WARN … reachable read-only via 'home:ro'` to a `PASS`
-naming the new grant, and `--probe-sandbox` still reads the tree from inside the sandbox.
-The definitive check is behavioural: make a save in-game, quit, and confirm it is still
-there.
+`rdtroubleshoot flatpak` moves from `WARN … reachable read-only via 'home:ro'` to
+`PASS … reachable and writable`.
+
+**That is a static reading of the grant, and it is not sufficient on its own.**
+`--probe-sandbox` only *reads* — nothing in this tool writes, which is what makes it safe to
+run while RetroDECK is open — so neither check proves a write will land. A write has to pass
+Flatpak *and* SELinux, and only an actual write tests both:
+
+```sh
+flatpak run --command=sh io.github.ryubing.Ryujinx -c \
+  'echo ok > "$HOME/retrodeck/roms/switch/.write-test" && cat "$HOME/retrodeck/roms/switch/.write-test" && rm "$HOME/retrodeck/roms/switch/.write-test"'
+```
+
+Confirmed on the machine 2026-08-28: the write succeeded, the file read back, and no new AVC
+denial appeared. Then check `journalctl -b -g 'avc:.*denied'` for anything naming the app —
+a write refused by SELinux rather than Flatpak looks identical from inside the sandbox.
+
+The final behavioural check is still worth doing: make a save in-game, quit, and confirm it
+survives.
+
+### This is Flatpak, not SELinux
+
+Worth stating because SELinux is the natural suspicion on Fedora Atomic, and chasing it
+wastes the time this entry exists to save. On the machine this was found on, all three
+checks came out clean:
+
+- **The ROM tree is labelled correctly.** `ls -Zd ~/retrodeck/roms` gives
+  `unconfined_u:object_r:user_home_t:s0`, which is what a confined process needs to read a
+  user's home. So is the app's own data directory.
+- **No AVC denial mentions the app.** `journalctl -b -g 'avc:.*denied' | grep -i ryujinx`
+  returns nothing — the only denials on that machine are the benign sshd control sockets and
+  some permissive-domain ones that blocked nothing.
+- **A real write succeeds once the Flatpak grant allows it**, which is the test that
+  exercises *both* layers at once (see Verification). If SELinux were the blocker, widening
+  the Flatpak grant would change nothing.
+
+SELinux *can* cause this symptom — a ROM volume populated elsewhere may come up
+`unlabeled_t` or `default_t` instead of `user_home_t`, and the fix there is
+`sudo restorecon -RFv ~/retrodeck`. Check the label before assuming which layer is at fault;
+`rdtroubleshoot os` reports it.
 
 ### When this entry does not fit
 
