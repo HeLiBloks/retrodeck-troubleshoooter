@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.log
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.pytest_cache/
+
+# Never commit credentials; .env_template is the tracked example.
+.env
