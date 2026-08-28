@@ -15,6 +15,17 @@ know these three, all measured on this machine:
 - **Homebrew is installed but not on PATH in a non-interactive shell.** Every
   "brew: command not found" from a script or an agent session is this.
 
+## 0. Before anything: check what is already known
+
+```sh
+rdtroubleshoot kb search "<the user's words>"
+rdtroubleshoot --kb            # annotates each WARN/FAIL with the entries covering it
+```
+
+A hit in `errors/` means the answer is already written — reply from its TL;DR. A hit in
+`backlog/` means it is known and unresolved, which is still a real answer. Full procedure in
+the `kb-lookup` skill; recording what you find is in `document-finding`.
+
 ## 1. Always start here
 
 ```sh

@@ -33,16 +33,26 @@ EXIT_FAILURES = 2
 
 @dataclass(frozen=True, slots=True)
 class Check:
-    """One finding. `fix` is printed only when there is something to type."""
+    """One finding. `fix` is printed only when there is something to type.
+
+    `notes` are lines that belong to *this* check rather than standing on their own - a
+    knowledge-base pointer, say. They render with the check at any verbosity, which is the
+    whole reason they are a field instead of separate INFO checks: attached as their own
+    checks, `--quiet` filtered them out precisely when they were most wanted.
+    """
 
     level: str
     name: str
     detail: str
     fix: str = ""
+    notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.level not in _RANK:
             raise ValueError(f"unknown level {self.level!r}")
+
+    def with_notes(self, notes: Sequence[str]) -> "Check":
+        return Check(self.level, self.name, self.detail, self.fix, tuple(notes))
 
 
 @dataclass
@@ -93,6 +103,8 @@ def render(reports: Sequence[Report], *, colour: bool | None = None, quiet: bool
             lines.append(f"{tag}  {check.name:<{width}}  {check.detail}")
             if check.fix:
                 lines.append(f"{'':<6}{'':<{width}}  -> {check.fix}")
+            for note in check.notes:
+                lines.append(f"{'':<6}{'':<{width}}  {note}")
     every = [c for report in reports for c in report.checks]
     if every:
         tally = {level: sum(1 for c in every if c.level == level) for level in LEVELS}
@@ -110,7 +122,13 @@ def render_json(reports: Sequence[Report]) -> str:
         {
             "group": report.group,
             "checks": [
-                {"level": c.level, "name": c.name, "detail": c.detail, "fix": c.fix}
+                {
+                    "level": c.level,
+                    "name": c.name,
+                    "detail": c.detail,
+                    "fix": c.fix,
+                    "notes": list(c.notes),
+                }
                 for c in report.checks
             ],
         }

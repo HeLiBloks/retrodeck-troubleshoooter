@@ -51,6 +51,21 @@ both read it, and both are expected to work the same way here.
   checks say what they could not inspect and why; the exit code does not move. `env.py` is
   the single place that decides whether a secret may be used, and credentials are loaded
   once in `cli.main` and passed down, so no check module reads the file itself.
+- **A problem solved once must stay solved, so the session ends in the knowledge base.**
+  `docs/kb/` is the point of this repository, not an appendix to it. Every troubleshooting
+  session that learned something ends with an entry, a sighting, or a `_skipped.md` line —
+  see the operating model below. A finding that lives only in a chat transcript is one the
+  next session pays for again.
+- **Evidence commits freely; a fix does not.** A sighting or a new `backlog/` entry is an
+  observation, and being wrong about an observation costs a later correction. Promoting to
+  `errors/` tells the next person to *do* something, so it needs the symptom seen, the fix
+  applied, and the symptom **confirmed gone**. `rdtroubleshoot kb check` enforces that with
+  a mandatory `verified:` / `verified_by:` pair, and `kb commit` refuses on a lint failure
+  or a red suite. Do not reach for `--skip-tests` to get past the gate.
+- **Never present a plausible fix as a verified one.** "It should work" and "the command
+  exited 0" are not verification. An unverified claim in an `errors/` entry is worse than no
+  entry, because it is trusted. Leaving a case in `backlog/` with an honest account of what
+  was ruled out is a good outcome, not a failure.
 - Commit messages are prose that says what was measured and why, not a subject line.
 
 ## Skills, and why they are listed here
@@ -81,6 +96,78 @@ not the mechanism.
 | [`diagnose-scraping`](.claude/skills/diagnose-scraping/SKILL.md) | A scrape that produced nothing, thin or wrong metadata, credentials, quota. |
 | [`diagnose-host`](.claude/skills/diagnose-host/SKILL.md) | SELinux, Flatpak sandboxes and overrides, ostree, brew, distrobox, disks. |
 | [`read-retrodeck-logs`](.claude/skills/read-retrodeck-logs/SKILL.md) | Reading the logs correctly: rotation format, noise, the lines that matter. |
+| [`kb-lookup`](.claude/skills/kb-lookup/SKILL.md) | **The dedup pre-flight — run this before diagnosing anything.** Match a symptom against what is already recorded. |
+| [`document-finding`](.claude/skills/document-finding/SKILL.md) | Record a finding: file an open case, add a sighting, or promote a verified fix and push it. |
+
+## The operating model
+
+One loop, and it is the whole point of the repository:
+
+> Somebody asks "why does X not work". You check what is already recorded, diagnose only what
+> is genuinely new, and end by writing down what you learned — as an open case if there is no
+> fix yet, or as a verified fix if there is. A verified fix gets pushed.
+
+```mermaid
+flowchart LR
+    A["why does X<br/>not work?"] --> B["kb-lookup:<br/>already recorded?"]
+    B -->|"errors/ hit"| C["answer from<br/>the TL;DR"]
+    B -->|"backlog/ hit"| D["known, no fix yet<br/>+ sighting"]
+    B -->|"no hit"| E["diagnose:<br/>rdtroubleshoot, then the log"]
+    E --> F["file backlog/<slug>.md"]
+    D --> G{"fix verified?"}
+    F --> G
+    G -->|"symptom confirmed gone"| H["promote -> errors/<br/>commit --push"]
+    G -->|"no"| I["stay in backlog/,<br/>record what was ruled out"]
+```
+
+**The pre-flight comes first.** Re-investigating a recorded symptom is the most common waste
+available and it costs three commands to avoid. The `kb-lookup` skill is that step.
+
+**The KB is executable, which is what makes this more than a folder of prose.** Every entry
+carries machine-matchable `signatures:`, so:
+
+- `rdtroubleshoot kb match <log>` routes a log to entries with no human in the loop;
+- `rdtroubleshoot --kb` annotates each WARN/FAIL with the entries that cover it.
+
+That second one works only because **a KB area *is* a checker group** (`os`, `flatpak`,
+`emulation`, `input`, `scraping`). The coupling is deliberate: it lets a finding point at what
+is already known, and lets an entry name the check that verifies its fix. Do not add an area
+without a corresponding group, and do not rename a group without the areas.
+
+**Two states, one gate.** `backlog/` is a case with no fix; `errors/` is a case with a
+verified one. The one-sentence test: if you can tell somebody what to *do*, it is an `errors/`
+entry. Promotion is the only gated step, and the gate is code — `verified:`, `verified_by:`,
+an eval fixture, a clean lint and a green suite, all enforced by `kb check` and `kb commit`
+rather than by anyone remembering.
+
+**Push access is probed, not assumed.** `kb commit --push` runs `git push --dry-run`, which
+authenticates and writes nothing. With access it pushes to `main`; without it, the work moves
+to a branch `kb/<slug>` and the fork-and-PR commands are printed. So a contributor who is not
+the repository owner gets a pull request automatically, and no username is hardcoded anywhere.
+
+Full conventions, the frontmatter subset and the signature sources: [`docs/kb/README.md`](docs/kb/README.md).
+Contributor-facing version: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+### Why this shape
+
+It is lifted from a support-desk repository that has been through roughly sixty entries, and
+these are the parts that survived that contact:
+
+- **Two states, promotion only on verification.** Everything else follows from it.
+- **The slug names the dominant symptom, not the cause.** Causes get re-diagnosed; symptoms
+  are what somebody greps for a year later.
+- **Single sightings are welcome.** Filing a one-off precisely is the only thing that makes a
+  *second* sighting recognisable — and the second sighting is the cue to fix it.
+- **An entry with no INDEX row is invisible.** So the lint fails on it, because relying on
+  memory here was tried and did not hold.
+- **One entry, many INDEX rows** — one per way somebody might describe the failure.
+- **Correcting an entry is normal.** A commit that only retracts an earlier claim is a good
+  commit.
+
+What is different here, besides the executable signatures: there is no support channel, so
+intake is the user asking directly and the evidence is a local log rather than a job URL; and
+storage nests by area (a human browses this tree on the web) while **routing stays flat**,
+because an index that branches is one you search twice.
 
 ## Layout
 
@@ -96,8 +183,16 @@ src/rdtroubleshoot/
   emulation.py              layout, gamelists, logs, BIOS, Switch, Model 3
   inputs.py                 controllers, and the Ryujinx GUID derivation
   scraping.py               Skyscraper, credentials, cache, quota, coverage
-  cli.py                    argument parsing and group dispatch
-docs/                       the findings, with the measurements behind them
+  cli.py                    argument parsing, group dispatch, and the --kb annotation
+  kb.py                     KB entries, frontmatter, signature matching, and the lint
+  kb_ops.py                 KB writes: new / sighting / promote, and the commit gate
+  kb_cli.py                 the `rdtroubleshoot kb ...` subcommand tree
+docs/
+  kb/                       the knowledge base — see docs/kb/README.md
+    errors/<area>/           cases with a verified fix
+    backlog/<area>/          open cases, no fix yet
+    evals/                   the recorded case that proved each fix
+  EMULATION.md              reference docs: the findings, with the measurements behind them
 tests/                      stdlib unittest; no network, no box required
 tools/check.sh              compile + suite
 ```
@@ -114,6 +209,10 @@ tools/check.sh              compile + suite
 ./rdtroubleshoot --guid 0003 054c 05c4 8111    # derive a Ryujinx controller id
 ./rdtroubleshoot env                  # which .env keys were found (names, never values)
 ./rdtroubleshoot --no-env             # ignore .env; skip every privileged check
+./rdtroubleshoot --kb                 # annotate each WARN/FAIL with the entries covering it
+./rdtroubleshoot kb search "black screen"
+./rdtroubleshoot kb match ~/.var/app/net.retrodeck.retrodeck/config/retrodeck/logs/retrodeck.log
+./rdtroubleshoot kb check             # the lint, and the commit gate
 ```
 
 Exit **0** healthy, **1** warnings, **2** failures. `--help`'s epilog is the authoritative
@@ -295,7 +394,7 @@ crashing. The box is the only place the real answers appear.
 
 ## The user's setup
 
-- **Target machine:** Lenovo IdeaPad Gaming 3 15ARH05, hostname `the test machine`,
+- **Target machine:** a Lenovo IdeaPad Gaming 3 15ARH05 running
   **Bazzite 44 (Kinoite)** — Fedora Atomic, immutable. 12 cores, 48 GB DDR4, GTX 1650 Ti
   Mobile, python 3.14.7.
 - **SSH from the dev machine:** `ssh -o BatchMode=yes retro@retrodeck-box`. Do **not** use

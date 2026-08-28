@@ -143,6 +143,41 @@ full on every ostree host for ever, SELinux denies sshd a control socket on ever
 connection, and Homebrew is invisible in a non-interactive shell. A checker that fires on
 those teaches you to ignore its exit code.
 
+## The knowledge base
+
+A problem diagnosed once should stay diagnosed, so findings live in `docs/kb/` as entries —
+and the entries are **executable**: each carries machine-matchable signatures, so a log can
+route itself to the answer.
+
+```sh
+rdtroubleshoot kb search "black screen"     # what is already recorded?
+rdtroubleshoot kb match <log>               # route a log to entries
+rdtroubleshoot --kb                         # annotate each WARN/FAIL with its entries
+```
+
+That last one is the payoff. A real warning on a live machine comes back knowing what it is:
+
+```
+WARN  Ryujinx sandbox  ~/retrodeck/roms is reachable read-only via 'home:ro'; writes beside the ROM will fail
+                       -> flatpak override --user --filesystem=~/retrodeck io.github.ryubing.Ryujinx
+                       known issue [fix known]: ryujinx-saves-lost-sandbox-home-readonly
+                         docs/kb/errors/flatpak/ryujinx-saves-lost-sandbox-home-readonly.md
+```
+
+**Two states, one gate.** `backlog/` is a case with no verified fix; `errors/` is a case with
+one. The test: if you can tell somebody what to *do*, it belongs in `errors/`. Promotion is
+the only gated step, and the gate is enforced by code — a `verified:` date, a `verified_by:`
+record of how it was confirmed, an eval fixture, a clean lint and a green suite.
+
+"Known, no fix yet" is a real answer, and a much better one than an invented fix. A
+well-recorded unsolved case is a genuinely useful contribution.
+
+Areas are `os`, `flatpak`, `emulation`, `input`, `scraping` — exactly the checker's group
+names, which is what lets a failing check point at the entries that cover it.
+
+See [docs/kb/README.md](docs/kb/README.md) for the lifecycle, the frontmatter subset and the
+signature sources, and [CONTRIBUTING.md](CONTRIBUTING.md) to add one.
+
 ## Documentation
 
 | file | contents |
@@ -150,6 +185,8 @@ those teaches you to ignore its exit code.
 | [docs/EMULATION.md](docs/EMULATION.md) | logs, the black-screen case, Switch, Model 3, gamelist traps |
 | [docs/BAZZITE-OS.md](docs/BAZZITE-OS.md) | SELinux, Flatpak sandboxes, ostree, brew, udev, this machine |
 | [docs/SCRAPING.md](docs/SCRAPING.md) | failures that report success, quota, coverage, source invariants |
+| [docs/kb/README.md](docs/kb/README.md) | the knowledge base: lifecycle, frontmatter, signatures |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | adding an entry, and the direct-push vs pull-request rule |
 | [CLAUDE.md](CLAUDE.md) | the agent contract, and the record of what was measured |
 
 ## Working with an agent
@@ -165,6 +202,8 @@ half the agents working here, and a test fails if a skill is missing from it.
 | `diagnose-scraping` | a scrape that produced nothing, thin or wrong metadata, quota |
 | `diagnose-host` | SELinux, Flatpak sandboxes, ostree, brew, distrobox, disks |
 | `read-retrodeck-logs` | reading the logs correctly — rotation format, noise, key lines |
+| `kb-lookup` | the dedup pre-flight: is this already recorded? |
+| `document-finding` | record a finding, and commit or open a PR for it |
 
 ## Developing
 

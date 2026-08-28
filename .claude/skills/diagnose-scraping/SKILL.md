@@ -10,6 +10,17 @@ run exits 0. A half-set credential scrapes nothing for four hours and exits 0. A
 written while RetroDECK is open is silently discarded on exit. So check before running, not
 after.
 
+## 0. Before anything: check what is already known
+
+```sh
+rdtroubleshoot kb search "<the user's words>"
+rdtroubleshoot --kb            # annotates each WARN/FAIL with the entries covering it
+```
+
+A hit in `errors/` means the answer is already written — reply from its TL;DR. A hit in
+`backlog/` means it is known and unresolved, which is still a real answer. Full procedure in
+the `kb-lookup` skill; recording what you find is in `document-finding`.
+
 ## 1. Always start here
 
 ```sh

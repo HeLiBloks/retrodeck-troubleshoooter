@@ -9,6 +9,17 @@ Run the checker first, then read the log. Do not start by editing configuration 
 the four most common causes here look like something else entirely, and two of them are
 normal states rather than faults.
 
+## 0. Before anything: check what is already known
+
+```sh
+rdtroubleshoot kb search "<the user's words>"
+rdtroubleshoot --kb            # annotates each WARN/FAIL with the entries covering it
+```
+
+A hit in `errors/` means the answer is already written — reply from its TL;DR. A hit in
+`backlog/` means it is known and unresolved, which is still a real answer. Full procedure in
+the `kb-lookup` skill; recording what you find is in `document-finding`.
+
 ## 1. Always start here
 
 ```sh

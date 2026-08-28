@@ -23,6 +23,17 @@ Four things about this file before you grep it:
    driving the game. Unfiltered it drowns everything real.
 4. It is not reliably UTF-8. Decode with `errors="replace"`, or `grep -a`.
 
+## 0. Before anything: check what is already known
+
+```sh
+rdtroubleshoot kb search "<the user's words>"
+rdtroubleshoot --kb            # annotates each WARN/FAIL with the entries covering it
+```
+
+A hit in `errors/` means the answer is already written — reply from its TL;DR. A hit in
+`backlog/` means it is known and unresolved, which is still a real answer. Full procedure in
+the `kb-lookup` skill; recording what you find is in `document-finding`.
+
 ## The first pass
 
 ```sh

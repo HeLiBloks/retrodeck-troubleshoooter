@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import emulation, env, flatpakq, inputs, osquery, paths, scraping
+from . import emulation, env, flatpakq, inputs, kb_cli, osquery, paths, scraping
 from .probe import Check, Report, exit_code, render, render_json
 
 EPILOG = """\
@@ -19,6 +19,11 @@ groups:
   emulation   RetroDECK layout, gamelists, logs, BIOS, Switch, Model 3
   input       controllers, and the black-screen-after-loading symptom
   scraping    Skyscraper, credentials, resource cache, quota, coverage
+
+knowledge base:
+  rdtroubleshoot kb --help     recorded symptoms, their signatures, and their fixes
+  rdtroubleshoot kb match LOG  match a log against every recorded signature
+  --kb                         annotate each WARN/FAIL with the entries that cover it
 
 environment:
   RETRODECK_HOME   the RetroDECK tree           (default ~/retrodeck)
@@ -83,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="ignore any .env file, and skip every check that needs privilege",
     )
     parser.add_argument(
+        "--kb",
+        action="store_true",
+        help="annotate each WARN/FAIL check with matching knowledge-base entries",
+    )
+    parser.add_argument(
         "--env-file",
         type=Path,
         default=None,
@@ -107,7 +117,62 @@ def _selected(names: list[str]) -> list[str]:
     return [name for name in GROUPS if name in names]
 
 
+def annotate_from_kb(reports: list[Report]) -> None:
+    """Point each WARN/FAIL at the knowledge-base entries that cover it.
+
+    Matching is on the check's own name against entries carrying a `checker:` signature,
+    which works only because a KB area IS a checker group - that coupling is what turns a
+    finding into "and here is what we already know about it" rather than a dead end.
+
+    A missing or malformed KB must not break a diagnostic run, so any failure here is
+    swallowed: the checks the user asked for are more important than the annotation.
+    """
+    try:
+        from . import kb
+
+        entries = kb.load_all()
+    except Exception:
+        return
+    if not entries:
+        return
+    for report in reports:
+        annotated: list[Check] = []
+        for check in report.checks:
+            if check.level not in ("WARN", "FAIL"):
+                annotated.append(check)
+                continue
+            matches = kb.match_text(entries, check.name + "\n" + check.detail, source="checker")
+            notes: list[str] = []
+            seen: set[str] = set()
+            for match in matches:
+                if match.entry.slug in seen:
+                    continue
+                seen.add(match.entry.slug)
+                state = "fix known" if match.entry.state == "errors" else "open, no fix yet"
+                notes.append(
+                    f"known issue [{state}]: {match.entry.slug}"
+                )
+                notes.append(
+                    f"  docs/kb/{match.entry.state}/{match.entry.area}/{match.entry.slug}.md"
+                )
+            annotated.append(check.with_notes(notes) if notes else check)
+        report.checks = annotated
+
+
 def main(argv: list[str] | None = None) -> int:
+    # `kb` is a subcommand tree of its own, dispatched before the group parser so the
+    # existing positional form (`rdtroubleshoot emulation input`) is untouched.
+    if argv is None:
+        import sys as _sys
+
+        argv = _sys.argv[1:]
+    if argv and argv[0] == "kb":
+        kb_parser = argparse.ArgumentParser(prog="rdtroubleshoot")
+        subparsers = kb_parser.add_subparsers(dest="command", required=True)
+        kb_cli.add_parser(subparsers)
+        kb_args = kb_parser.parse_args(argv)
+        return kb_args.func(kb_args)
+
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -148,6 +213,9 @@ def main(argv: list[str] | None = None) -> int:
             reports.append(inputs.collect())
         elif group == "scraping":
             reports.append(scraping.collect(repo=args.repo, creds=creds))
+
+    if args.kb:
+        annotate_from_kb(reports)
 
     if args.json:
         print(render_json(reports))
