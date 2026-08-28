@@ -224,3 +224,72 @@ class CoverageNoiseTest(ProbeTestCase):
                 [c for c in checks if c.level == "WARN" and "amiga" in c.name],
                 "20 entries with no descriptions is a genuine coverage gap",
             )
+
+
+class TwoLogFormatsTest(ProbeTestCase):
+    """One file interleaves two log formats, and the scan must read both.
+
+    Reading only Ryujinx's `|E|` reported "no real |E| lines" on a real log holding 124
+    `[WARN]` and one `[ERROR]` — a false clean, which is the worst thing a checker can say.
+    """
+
+    ESDE_ERROR = (
+        "[2026-08-27 20:06:01.996] [ERROR] [ES-DE] setReportingLevelFromRetroDeckConfig: "
+        "Failed to read rd_logging_level - RETRODECK_CONFIG_HOME environment variable not set."
+    )
+    ESDE_WARN = (
+        '[2026-08-27 20:06:02.100] [WARN] [ES-DE] File "/roms/naomi/cvs2/gdl-0007a.chd" is '
+        "present in gamelist.xml but the extension is not configured in es_systems.xml"
+    )
+    RYUJINX_ERROR = "00:00:11 |E| Application CheckLaunchState: Couldn't find any application"
+    RYUJINX_WARN = "00:00:12 |W| Hid Remap: No matching controllers found."
+
+    def test_both_error_formats_are_recognised(self):
+        self.assertTrue(emulation.ERROR_LINE_RE.search(self.ESDE_ERROR))
+        self.assertTrue(emulation.ERROR_LINE_RE.search(self.RYUJINX_ERROR))
+
+    def test_both_warning_formats_are_recognised(self):
+        self.assertTrue(emulation.WARN_LINE_RE.search(self.ESDE_WARN))
+        self.assertTrue(emulation.WARN_LINE_RE.search(self.RYUJINX_WARN))
+
+    def test_an_info_line_is_not_read_as_either(self):
+        info = "[2026-08-27 20:08:30.829] [INFO] [ES-DE] Launching game \"X\" from system \"n64\""
+        self.assertIsNone(emulation.ERROR_LINE_RE.search(info))
+        self.assertIsNone(emulation.WARN_LINE_RE.search(info))
+
+    def test_a_debug_line_is_not_read_as_either(self):
+        """8430 of one real log's 8678 lines are DEBUG; reading them as findings is useless."""
+        debug = "[2026-08-27 20:06:02.001] [DEBUG] [ES-DE] FileData::FileData(): whatever"
+        self.assertIsNone(emulation.ERROR_LINE_RE.search(debug))
+        self.assertIsNone(emulation.WARN_LINE_RE.search(debug))
+
+    def test_the_dead_entry_class_is_recognised_from_both_of_its_lines(self):
+        """ES-DE logs twice per unopenable entry; both must route to one finding."""
+        self.assertTrue(emulation.DEAD_ENTRY_RE.search(self.ESDE_WARN))
+        self.assertTrue(
+            emulation.DEAD_ENTRY_RE.search(
+                '[WARN] [ES-DE] Couldn\'t process "/roms/naomi/cvs2/gdl-0007a.chd", skipping entry'
+            )
+        )
+
+    def test_normalise_keeps_the_front_of_the_line(self):
+        """The informative half of an error is its start; a tail slice truncated '[ERROR]'."""
+        key = emulation._normalise(self.ESDE_ERROR)
+        self.assertTrue(key.startswith("[ERROR]"), key[:40])
+        self.assertNotIn("2026-08-27", key)
+
+    def test_normalise_collapses_quoted_paths_so_a_class_groups(self):
+        one = emulation._normalise('[WARN] [ES-DE] File "/a/b.chd" is present in gamelist.xml')
+        two = emulation._normalise('[WARN] [ES-DE] File "/c/d.chd" is present in gamelist.xml')
+        self.assertEqual(one, two)
+
+    def test_mesa_noise_is_still_filtered_in_the_ryujinx_format(self):
+        line = "|E| ATTENTION: default value of option mesa_glthread overridden by environment"
+        self.assertTrue(emulation.ERROR_LINE_RE.search(line))
+        self.assertTrue(emulation.LOG_NOISE_RE.search(line))
+
+    def test_a_missing_file_warning_is_parsed_for_its_path(self):
+        line = '[WARN] [ES-DE] File "/roms/neogeo/jonasindiana.zip" does not exist, skipping entry'
+        match = emulation.MISSING_FILE_RE.search(line)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(2), "/roms/neogeo/jonasindiana.zip")

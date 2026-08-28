@@ -27,8 +27,20 @@ from .probe import Check, Report, home, human, run, tail_lines
 
 # Ryujinx logs this at error severity and it is not an error.
 LOG_NOISE_RE = re.compile(r"mesa_glthread|ATTENTION: default value of option", re.IGNORECASE)
-ERROR_LINE_RE = re.compile(r"\|E\|")
-WARN_LINE_RE = re.compile(r"\|W\|")
+# **Two log formats are interleaved in one file** and the scan must read both. The
+# emulators use Ryujinx's `|E|` / `|W|`; ES-DE and RetroDECK itself use `[ERROR]` /
+# `[WARN]`. Reading only the first reported "no real |E| lines" on a log holding 124
+# `[WARN]` and one `[ERROR]` - a false clean, which is the worst thing a checker can say.
+ERROR_LINE_RE = re.compile(r"\|E\||\[ERROR\]")
+WARN_LINE_RE = re.compile(r"\|W\||\[WARN\]")
+# A gamelist entry whose extension the system does not declare is a game ES-DE lists and
+# cannot open. It logs twice per entry, so the two lines are counted as one finding.
+DEAD_ENTRY_RE = re.compile(
+    r"extension is not configured in es_systems\.xml|Couldn't process \"", re.IGNORECASE
+)
+MISSING_FILE_RE = re.compile(r"(File|Folder) \"([^\"]+)\" does not exist, skipping entry")
+# Below this, a repeating warning class is chatter rather than a pattern.
+WARN_CLASS_FLOOR = 3
 LAUNCH_RE = re.compile(r"Launching game .*? from system '?([\w-]+)'?", re.IGNORECASE)
 # One pattern for "is RetroDECK running", so the checker and any writer cannot drift.
 RETRODECK_PROCESS_TERMS = ("es-de", "emulationstation", "net.retrodeck")
@@ -217,7 +229,22 @@ def coverage() -> list[tuple[str, int, dict[str, int]]]:
     return rows
 
 
+def _normalise(line: str) -> str:
+    """Collapse timestamps and quoted paths so repeats of one class group together."""
+    text = re.sub(r"^\[[0-9 :.\-]+\]\s*", "", line.strip())
+    text = re.sub(r"\d{2}:\d{2}:\d{2}[.,]\d+", "<t>", text)
+    return re.sub(r'"[^"]*"', '"X"', text)
+
+
 def _log_scan() -> list[Check]:
+    """Errors and repeating warnings from the tail, in both of the file's formats.
+
+    A repeating `|W|` is often more informative than a one-off `|E|` - the
+    black-screen-after-loading case is exactly that shape - so warnings are grouped and
+    reported rather than dropped. They are INFO unless the class has a known meaning,
+    because ES-DE emits ordinary chatter here too and a checker that warns on all of it
+    teaches its user to ignore the exit code.
+    """
     checks: list[Check] = []
     log = paths.retrodeck_log()
     if not log.is_file():
@@ -226,33 +253,91 @@ def _log_scan() -> list[Check]:
         size = log.stat().st_size
     except OSError:
         size = 0
-    lines = tail_lines(log, limit=6000)
+    lines = tail_lines(log, limit=12000)
     checks.append(Check("INFO", "RetroDECK log", f"{log} ({human(size)}, last {len(lines)} lines scanned)"))
     launches = [match.group(1) for line in lines for match in [LAUNCH_RE.search(line)] if match]
     if launches:
         checks.append(Check("INFO", "Recent launches", f"last: {', '.join(reversed(launches[-5:]))}"))
-    errors = [
-        line.strip()
-        for line in lines
-        if ERROR_LINE_RE.search(line) and not LOG_NOISE_RE.search(line)
-    ]
+
     noise = sum(1 for line in lines if ERROR_LINE_RE.search(line) and LOG_NOISE_RE.search(line))
     if noise:
         checks.append(
-            Check("INFO", "Log noise filtered", f"{noise} mesa_glthread line(s) at |E| severity ignored")
+            Check("INFO", "Log noise filtered", f"{noise} mesa_glthread line(s) at error severity ignored")
         )
-    if not errors:
-        checks.append(Check("PASS", "Log errors", "no real |E| lines in the scanned tail"))
-        return checks
-    unique: dict[str, int] = {}
-    for line in errors:
-        # Collapse the timestamp so repeats group.
-        key = re.sub(r"\d{2}:\d{2}:\d{2}[.,]\d+", "<t>", line)[-160:]
-        unique[key] = unique.get(key, 0) + 1
-    for key, count in sorted(unique.items(), key=lambda item: -item[1])[:6]:
-        checks.append(Check("WARN", "Log error", f"{key} ({count}x)"))
-    if len(unique) > 6:
-        checks.append(Check("INFO", "Log errors", f"{len(unique) - 6} further distinct error(s) not shown"))
+
+    errors: dict[str, int] = {}
+    warnings: dict[str, int] = {}
+    for line in lines:
+        if LOG_NOISE_RE.search(line):
+            continue
+        if ERROR_LINE_RE.search(line):
+            key = _normalise(line)[:180]
+            errors[key] = errors.get(key, 0) + 1
+        elif WARN_LINE_RE.search(line):
+            key = _normalise(line)[:180]
+            warnings[key] = warnings.get(key, 0) + 1
+
+    if errors:
+        for key, count in sorted(errors.items(), key=lambda item: -item[1])[:6]:
+            checks.append(Check("WARN", "Log error", f"{key} ({count}x)"))
+        if len(errors) > 6:
+            checks.append(
+                Check("INFO", "Log errors", f"{len(errors) - 6} further distinct error(s) not shown")
+            )
+    else:
+        checks.append(Check("PASS", "Log errors", "no error-severity lines in the scanned tail"))
+
+    # One class has a concrete meaning and a concrete fix, so it gets its own finding
+    # rather than being folded into the grouped chatter.
+    dead = [line for line in lines if DEAD_ENTRY_RE.search(line)]
+    if dead:
+        paths_named = {
+            match.group(0) for line in dead for match in [re.search(r'"([^"]+)"', line)] if match
+        }
+        systems = sorted({
+            match.group(1)
+            for line in dead
+            for match in [re.search(r"/roms/([^/]+)/", line)]
+            if match
+        })
+        checks.append(
+            Check(
+                "WARN",
+                "Dead gamelist entries",
+                f"{len(paths_named)} entr{'y' if len(paths_named) == 1 else 'ies'} are in a gamelist "
+                f"with an extension the system does not declare, so ES-DE lists them and cannot "
+                f"open them — system(s): {', '.join(systems) or 'unknown'}",
+                "remove those entries from the gamelist, or add the extension to the system's "
+                "es_systems.xml — check which is right before doing either",
+            )
+        )
+
+    missing = [
+        match.group(2)
+        for line in lines
+        for match in [MISSING_FILE_RE.search(line)]
+        if match
+    ]
+    if missing:
+        checks.append(
+            Check(
+                "INFO",
+                "Stale gamelist entries",
+                f"{len(set(missing))} path(s) in a gamelist no longer exist, e.g. "
+                f"{sorted(set(missing))[0]}",
+                "harmless — ES-DE skips them; they clear on the next gamelist write",
+            )
+        )
+
+    other = {
+        key: count
+        for key, count in warnings.items()
+        if not DEAD_ENTRY_RE.search(key) and not MISSING_FILE_RE.search(key)
+    }
+    if other:
+        top = sorted(other.items(), key=lambda item: -item[1])[:4]
+        detail = "; ".join(f"{key[:90]} ({count}x)" for key, count in top)
+        checks.append(Check("INFO", "Log warnings", f"{sum(other.values())} line(s) — {detail}"))
     return checks
 
 
