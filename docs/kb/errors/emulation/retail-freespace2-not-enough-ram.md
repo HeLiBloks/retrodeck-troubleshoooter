@@ -106,8 +106,16 @@ Measured on the test machine, 2026-08-28 (12 cores, 48 GB RAM, Bazzite 44):
 ### Fix
 
 Replace the executable, not the wrapper's environment. **FreeSpace Open** is the community
-engine for this game; it reads the retail `.vp` files directly, so the retail install stays
-exactly where it is.
+engine for this game; it reads the retail data directly, so the retail install stays exactly
+where it is.
+
+**Correction, from a later session.** This entry first said FSO "reads the retail `.vp`
+files". That is the general case but was not true of the install it was written against:
+seven of its eight packs turned out to be index-only stubs and the game was really running
+off the loose extracted `data/` tree. The `cd` below is what matters either way — it puts
+FSO's game root on whichever of the two the install actually has. See
+[fso-fatal-error-zero-byte-anim](../../backlog/emulation/fso-fatal-error-zero-byte-anim.md)
+for how to tell a real pack from a stripped one.
 
 1. **Get a native Linux FSO build.** The releases are at
    `https://github.com/scp-fs2open/fs2open.github.com/releases`. The Linux x86_64 tarball
@@ -201,15 +209,17 @@ driven from an SSH session — that last step needs a human at the keyboard.
 <!-- Newest first. `rdtroubleshoot kb sighting retail-freespace2-not-enough-ram "..."` appends here and moves
      last_confirmed forward. A second sighting is the cue to investigate and promote. -->
 
-- **2026-08-28** — resolved with FSO 26.0.0 (see *Fix* and *Verification*). One thing was
-  seen **once** during the very first run against a brand-new pilot and did not recur:
-  `Error: animation (cb_train-01_a.ani) has invalid fps of zero, fix this!` from
-  `generic.cpp:298`, which raised an FSO `Error!` dialog. It did not reappear across a
-  100-second idle run, a clean relaunch, or a `SIGTERM` shutdown. `cb_train-01_a.ani` is a
-  **training-mission** command-briefing animation, so if it returns it is most likely on
-  entering the training missions rather than the main campaign. Recorded so that a second
-  sighting is recognisable; one occurrence is not enough to act on, and it does not affect
-  the fix above.
+- **2026-08-28, retraction.** This entry originally recorded
+  `Error: animation (cb_train-01_a.ani) has invalid fps of zero` as a one-off that "did not
+  recur". **That was wrong**, and the user hit it in normal play the same evening. It now
+  has its own entry:
+  [fso-fatal-error-zero-byte-anim](../../backlog/emulation/fso-fatal-error-zero-byte-anim.md).
+  The reasoning that produced the bad call is worth keeping: the error was declared
+  non-reproducing on the strength of a 100-second idle run, a relaunch and a `SIGTERM` — none
+  of which load an animation, because the main hall never does. **Absence of a symptom under
+  conditions that cannot trigger it is not evidence.** Identify the trigger before calling
+  something a one-off.
+- **2026-08-28** — resolved with FSO 26.0.0 (see *Fix* and *Verification*).
 - **2026-08-28** — first seen. Ports entry `FreeSpace 2.sh` launched from ES-DE on the
   Bazzite box; handed over as an open case in `roms/ports/HANDOFF.md` after the executable,
   prefix and renderer changes had all been tried.
