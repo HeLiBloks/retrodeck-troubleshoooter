@@ -1,9 +1,11 @@
 ---
 slug: gdrom-chd-duplicated-into-naomi
 area: emulation
-status: open
+status: fixed
 first_seen: 2026-08-28
 last_confirmed: 2026-08-28
+verified: 2026-08-28
+verified_by: 104 files re-hashed identical at the moment of deletion, 7.25 GiB freed, 104 gamelist entries removed with 0 playcount/favourite lost, both gamelists re-parse, keyboard/luptype asserted surviving
 signatures:
   - source: symptom
     pattern: (arcade|naomi).*(listed twice|duplicate|won'?t (open|launch)|blank entry)
@@ -22,12 +24,13 @@ signatures:
 
 ## TL;DR
 
-We have seen this and there is **no fix recorded yet**, because the remedy means deleting
-ROMs and that is the library owner's decision. The GD-ROM set exists **twice** — under both
-`roms/naomi/` and `roms/naomigd/`, byte-for-byte identical — and the `naomi` copy also puts
-**57 disc images into `naomi/gamelist.xml` as if they were games**. ES-DE lists those 57 and
-cannot open any of them, so each affected title appears twice in that system with one of the
-two doing nothing. Nothing is broken or at risk; the working `.zip` entry still launches.
+The GD-ROM set exists **twice** — under `roms/naomi/` and `roms/naomigd/` — and the `naomi`
+copy also lists its disc images in `naomi/gamelist.xml` as if they were games, which ES-DE
+lists and cannot open. **`naomigd` is the system that exists for GD-ROM; the `naomi` copy is
+dead weight.** Remove the duplicate and unopenable entries from `naomi/gamelist.xml`, then
+delete the duplicated files from `naomi/` — but **hash-verify every file first**, and check
+play history before removing any entry. On the machine this was found on that reclaimed
+7.25 GiB and ended 114 warnings per startup, with no play history lost.
 
 ---
 
@@ -93,25 +96,64 @@ Measured on the test machine, 2026-08-28:
   seen at all; here they have one the system does not declare and are seen, listed and
   refused. Opposite direction, different fix.
 
-### Next steps
+### Fix
 
-The library owner has to choose, because every route deletes something:
+**Establish which side is canonical before touching anything**, by play history rather than
+by reasoning about which system *ought* to own GD-ROM. `playcount` and `favorite` live in
+the gamelist and are the only record of what the user actually plays:
 
-1. **Remove the 57 spurious `.chd` entries from `naomi/gamelist.xml`** and leave every file
-   alone. Lowest risk: it deletes no ROM, ends 114 warnings per startup, and removes the
-   duplicate listings. Requires RetroDECK closed (ES-DE rewrites gamelists on exit) and a
-   gamelist backup, which the rotation already takes.
-2. **Also remove the duplicated GD-ROM files from `naomi/`**, reclaiming 7.25 GiB, on the
-   reasoning that `naomigd` is the system that exists for GD-ROM and already holds an
-   identical copy. **This needs confirming before acting** — verify the full set by hash
-   rather than by the sampled pair, and check that no launcher or per-game config in the
-   `naomi` system points at those paths.
-3. **Do nothing.** It costs 7.25 GiB and some log noise, and no game is unplayable.
+```sh
+# per system: entries, how many played, how many favourited
+```
 
-**Two safety notes for whoever acts on this.** `keyboard` and `luptype` are CHD directories
-present **only** under `naomi/` — they are *not* duplicated, so a blanket delete of
-`naomi/*/` would lose them. And option 2 must be verified against the whole set: 45 of 47
-directories overlap, and the two that do not are exactly the ones a careless glob would take.
+On the machine this was found on the answer was unambiguous: of `naomi`'s 45 played games
+and 6 favourites, **every one belonged to a title that is not duplicated**. The 48
+duplicated `.zip` entries and 56 `.chd` entries had **0 plays and 0 favourites**, while
+`naomigd` had 19 plays. So GD-ROM games were only ever launched from `naomigd`.
+
+Then, in this order:
+
+1. **Close RetroDECK.** ES-DE rewrites every gamelist on exit, so a gamelist edited while it
+   runs is discarded and the write reports success.
+2. **Back up the gamelists** you are about to touch.
+3. **Remove the unopenable and duplicate entries**, skipping any entry that carries a
+   `playcount` or `favorite` whatever the rule says — history is never worth reclaiming
+   space for.
+4. **Delete the duplicated files, re-hashing each at the moment of deletion.** Not from an
+   earlier survey: a file may have changed between the survey and the delete, and the whole
+   safety of this step is that the twin is identical. Refuse any file whose twin does not
+   match rather than deleting it anyway.
+5. **Protect the directories that exist on one side only.** Here they were `keyboard` and
+   `luptype` — 45 of 47 CHD directories overlapped, and the two that did not are exactly
+   what a `naomi/*/` glob would have taken. Assert they survive afterwards.
+6. **Orphaned media**: the removed entries leave their artwork behind (403 MiB here). Move
+   it to a dated directory rather than deleting it — it is regenerable but only at the cost
+   of a scrape, and `naomigd` already has its own copy.
+
+### Verification
+
+Measured on the machine, after the fix:
+
+- `naomi/gamelist.xml`: **196 → 92 entries** — 56 `.chd` and 48 duplicates removed, **0
+  skipped for history** because none had any.
+- Files: **104 re-hashed identical at the moment of deletion, 0 refused, 7.25 GiB freed**;
+  the ROM volume went from 715.8 to 721 GiB free.
+- `naomigd` **untouched**: 48 zips and 45 CHD directories before and after.
+- `keyboard` and `luptype` asserted present afterwards.
+- Both edited gamelists re-parse.
+- `rdtroubleshoot emulation` exits **0**, and reports the log's 57-entry complaint as
+  **stale** — the log still holds the run that predates the fix. Launch RetroDECK once for
+  the final confirmation that the warnings stop.
+
+### When this entry does not fit
+
+- **Play history exists on the side you were about to delete.** Then that side is the one in
+  use and the diagnosis reverses. Check before acting, every time.
+- The two copies are **not** hash-identical — then they are different dumps, not duplicates,
+  and deleting either loses something.
+- The unopenable entries are in a system that has **no** counterpart holding the same games.
+  Then removing the entries is still right, but there is nothing to reclaim and the files
+  must stay.
 
 ### Sightings
 

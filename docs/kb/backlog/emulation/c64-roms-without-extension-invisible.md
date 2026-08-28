@@ -77,6 +77,7 @@ Other tells:
 
 ### Sightings
 
+- **2026-08-28** — Fix applied but NOT yet confirmed: 47 files identified as real PRGs by their $0801 load-address magic and renamed to .prg (the 48th, .directory, is a KDE file and was skipped). Renaming was free here — those files had 0 gamelist entries and 0 media, so the usual 'renaming breaks media matching' cost did not apply. Coverage still reads 35 entries because nothing has scanned the folder yet; this stays open until a scrape confirms the games appear.
 - **2026-08-28** — found by `rdtroubleshoot scraping` on the test machine as the only real
   coverage warning across the whole library. Not a user report; the folder had presumably
   looked like this for a long time.

@@ -4,6 +4,8 @@ A checker whose exit code fires on normal states is worth nothing, so the rules 
 suppress a false alarm are as much worth pinning as the ones that raise a real one.
 """
 
+import datetime as dt
+import os
 import unittest
 from pathlib import Path
 
@@ -318,3 +320,52 @@ class TwoLogFormatsTest(ProbeTestCase):
         """An unexplained suppression is indistinguishable from a bug."""
         for pattern, why in emulation.BENIGN_ERRORS:
             self.assertGreater(len(why.split()), 5, f"{pattern.pattern} has no real explanation")
+
+    def test_the_session_start_marker_is_recognised(self):
+        """Everything before the last start belongs to a previous run."""
+        for line in (
+            "[2026-08-27 20:06:00.983] [INFO] [SOURCE] Initializing RetroDECK",
+            "[2026-08-27 20:06:01.996] [INFO] [ES-DE] ES-DE 3.4.1 (r51), built Apr 14 2026",
+        ):
+            self.assertTrue(emulation.SESSION_START_RE.search(line), line)
+
+    def test_an_ordinary_line_is_not_a_session_start(self):
+        self.assertIsNone(
+            emulation.SESSION_START_RE.search("[INFO] [ES-DE] Setting up AudioManager...")
+        )
+
+    def test_only_the_last_session_is_scanned(self):
+        """A finding from a previous run is history, not a current fault."""
+        lines = [
+            "[2026-08-01 10:00:00.000] [INFO] [SOURCE] Initializing RetroDECK",
+            "[2026-08-01 10:00:01.000] [WARN] [ES-DE] old problem",
+            "[2026-08-27 20:06:00.000] [INFO] [SOURCE] Initializing RetroDECK",
+            "[2026-08-27 20:06:01.000] [WARN] [ES-DE] current problem",
+        ]
+        session, end = emulation._last_session(lines)
+        self.assertNotIn("old problem", "\n".join(session))
+        self.assertIn("current problem", "\n".join(session))
+        self.assertEqual(end.year, 2026)
+        self.assertEqual(end.hour, 20)
+
+    def test_a_log_with_no_marker_is_scanned_whole(self):
+        """Better to over-report than to silently scan nothing."""
+        lines = ["[2026-08-27 20:06:01.000] [WARN] [ES-DE] something"]
+        session, _ = emulation._last_session(lines)
+        self.assertEqual(len(session), 1)
+
+    def test_newer_than_is_false_without_a_timestamp(self):
+        """No session time means no staleness claim can be made — so make none."""
+        self.assertFalse(emulation._newer_than([Path("/etc/hostname")], None))
+
+    def test_newer_than_requires_every_path_to_be_newer(self):
+        """One un-touched gamelist means the finding may still be live."""
+        import time
+
+        with sandbox() as root:
+            old = write(root / "old.xml", "x")
+            os.utime(old, (1000, 1000))
+            new = write(root / "new.xml", "x")
+            moment = dt.datetime.fromtimestamp(time.time() - 60)
+            self.assertTrue(emulation._newer_than([new], moment))
+            self.assertFalse(emulation._newer_than([old, new], moment))

@@ -16,6 +16,7 @@ documentation, and each check stands for something that cost a session:
 
 from __future__ import annotations
 
+import datetime as dt
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -41,6 +42,13 @@ DEAD_ENTRY_RE = re.compile(
 MISSING_FILE_RE = re.compile(r"(File|Folder) \"([^\"]+)\" does not exist, skipping entry")
 # Below this, a repeating warning class is chatter rather than a pattern.
 WARN_CLASS_FLOOR = 3
+# A log is history, so a finding in it may already have been fixed. These mark where the
+# most recent run begins, and the timestamp lets a finding be compared against the mtime
+# of the file it is about - if the gamelist is newer than the session that complained, the
+# complaint is stale. Without this a repaired problem warns for ever, which is the same
+# "trains its user to ignore it" failure as warning about a normal state.
+SESSION_START_RE = re.compile(r"\[INFO\]\s+\[SOURCE\]\s+Initializing RetroDECK|\[INFO\]\s+\[ES-DE\]\s+ES-DE \d")
+TIMESTAMP_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 # Error-severity lines that are known, understood, and harmless. Reported as INFO with the
 # explanation rather than dropped, which is how this project treats the benign SELinux
 # denials too: counted and named, never hidden. Suppressing an error silently is how a
@@ -241,6 +249,40 @@ def coverage() -> list[tuple[str, int, dict[str, int]]]:
     return rows
 
 
+def _last_session(lines: list[str]) -> tuple[list[str], dt.datetime | None]:
+    """The lines belonging to the most recent run, and when that run last wrote.
+
+    Everything before the last session start is a previous run, and reporting its
+    findings as current is how a checker keeps warning about something already repaired.
+    """
+    start = 0
+    for index, line in enumerate(lines):
+        if SESSION_START_RE.search(line):
+            start = index
+    session = lines[start:]
+    last: dt.datetime | None = None
+    for line in reversed(session):
+        match = TIMESTAMP_RE.match(line.strip())
+        if match:
+            try:
+                last = dt.datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                continue
+            break
+    return session, last
+
+
+def _newer_than(paths: list[Path], moment: dt.datetime | None) -> bool:
+    """True when every path was modified after `moment` - i.e. the log predates them."""
+    if moment is None or not paths:
+        return False
+    stamp = moment.timestamp()
+    try:
+        return all(path.stat().st_mtime > stamp for path in paths)
+    except OSError:
+        return False
+
+
 def _normalise(line: str) -> str:
     """Collapse timestamps and quoted paths so repeats of one class group together."""
     text = re.sub(r"^\[[0-9 :.\-]+\]\s*", "", line.strip())
@@ -265,8 +307,12 @@ def _log_scan() -> list[Check]:
         size = log.stat().st_size
     except OSError:
         size = 0
-    lines = tail_lines(log, limit=12000)
-    checks.append(Check("INFO", "RetroDECK log", f"{log} ({human(size)}, last {len(lines)} lines scanned)"))
+    lines = tail_lines(log, limit=20000)
+    lines, session_end = _last_session(lines)
+    when = f", last run ended {session_end:%Y-%m-%d %H:%M}" if session_end else ""
+    checks.append(
+        Check("INFO", "RetroDECK log", f"{log} ({human(size)}, {len(lines)} lines from the last run{when})")
+    )
     launches = [match.group(1) for line in lines for match in [LAUNCH_RE.search(line)] if match]
     if launches:
         checks.append(Check("INFO", "Recent launches", f"last: {', '.join(reversed(launches[-5:]))}"))
@@ -322,17 +368,37 @@ def _log_scan() -> list[Check]:
             for match in [re.search(r"/roms/([^/]+)/", line)]
             if match
         })
-        checks.append(
-            Check(
-                "WARN",
-                "Dead gamelist entries",
-                f"{len(paths_named)} entr{'y' if len(paths_named) == 1 else 'ies'} are in a gamelist "
-                f"with an extension the system does not declare, so ES-DE lists them and cannot "
-                f"open them — system(s): {', '.join(systems) or 'unknown'}",
-                "remove those entries from the gamelist, or add the extension to the system's "
-                "es_systems.xml — check which is right before doing either",
-            )
+        detail = (
+            f"{len(paths_named)} entr{'y' if len(paths_named) == 1 else 'ies'} were in a gamelist "
+            f"with an extension the system does not declare, so ES-DE listed them and could not "
+            f"open them — system(s): {', '.join(systems) or 'unknown'}"
         )
+        # Has the gamelist been rewritten since that run complained?
+        touched = [
+            paths.gamelists_dir() / system / "gamelist.xml"
+            for system in systems
+            if (paths.gamelists_dir() / system / "gamelist.xml").is_file()
+        ]
+        if _newer_than(touched, session_end):
+            checks.append(
+                Check(
+                    "INFO",
+                    "Dead gamelist entries (stale)",
+                    detail + " — but every affected gamelist has been modified since that run",
+                    "launch RetroDECK once to confirm the warnings are gone; the log still holds "
+                    "the old run",
+                )
+            )
+        else:
+            checks.append(
+                Check(
+                    "WARN",
+                    "Dead gamelist entries",
+                    detail,
+                    "remove those entries from the gamelist, or add the extension to the system's "
+                    "es_systems.xml — check which is right before doing either",
+                )
+            )
 
     missing = [
         match.group(2)
