@@ -378,10 +378,12 @@ def push_or_pr(*, root: Path | None = None, slug: str = "") -> tuple[str, str]:
             return "blocked", f"could not create branch {branch}: {made.stderr.strip()}"
     instructions = (
         f"no push access to origin ({reason}).\n"
-        f"  Your work is on branch '{branch}'. To contribute it:\n"
+        f"  Your work is committed and now on branch '{branch}'. To contribute it:\n"
         f"    gh repo fork --remote --remote-name fork   # once\n"
         f"    git push fork {branch}\n"
         f"    gh pr create --base main --head {branch} --fill\n"
-        f"  Or push the branch to your own fork and open the PR in the web UI."
+        f"  Or push the branch to your own fork and open the PR in the web UI.\n"
+        f"  Note: '{current}' still points at this commit too. Once the PR is open you can\n"
+        f"  tidy that with: git checkout {current} && git reset --hard origin/{current}"
     )
     return "branch", instructions

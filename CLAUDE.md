@@ -376,6 +376,44 @@ so it is opt-in for tidiness rather than expense. Keep both: the static analysis
 **`-q` across the whole machine is three lines.** That is the number worth defending — a
 checker that prints 60 lines has no exit code worth reading.
 
+## The knowledge base, run end to end 2026-08-28
+
+The whole loop was driven once against the real machine, and two of the four things worth
+recording are corrections.
+
+**The matching half works on real data.** Piping the box's live journal into
+`kb match - --source journal` routes 4 permissive AVC denials to
+`selinux-permissive-domain-denials-are-not-faults`. Matching the live `retrodeck.log`
+correctly finds **nothing** — the pad is bound now, so `Hid Remap` is absent, and an entry
+that no longer fires is the right answer rather than a gap. `--kb` annotates the box's two
+real WARNs with the entries that cover them, one fixed and one open.
+
+**The gate blocks, and it was proved by breaking it.** Moving a `backlog/` entry into
+`errors/` by hand makes `kb commit` refuse with all five reasons named: wrong status, no
+`verified:`, no `verified_by:`, no INDEX row, no eval fixture. Deleting an INDEX row alone
+also blocks. `kb gate --skip-tests` is the fast form while drafting.
+
+**The contributor path was tested by pointing a clone at a repository we cannot push to.**
+`can_push` returns False, the commit still lands locally, the work moves to
+`kb/<slug>`, and the fork-and-PR commands print. Nothing is lost and nothing is
+half-pushed. One rough edge found by doing it: the contributor's local `main` also points
+at that commit, so the instructions now say so and give the reset command.
+
+**A false finding was nearly recorded, and the near-miss is in the entry.** The first
+`skyscraper-not-on-path` draft claimed the cause was the interactive/non-interactive `PATH`
+split — plausible, because that split is genuinely real here (Homebrew *is* on the
+interactive `PATH` and absent from the non-interactive one). It was wrong: Skyscraper is
+missing from **both**. The test that "confirmed" it had exported `PATH` in the parent shell
+and then run `bash -lic` in the same script, so the child inherited the export. **A PATH
+test is only valid in a shell that has not been touched.** The entry records this under
+*What has been ruled out*, because the wrong hypothesis is the useful part.
+
+That entry also stayed in `backlog/` rather than being promoted, which is the honest
+outcome: there are two working invocation routes and choosing between them is a setup
+decision, not a verified fix. Promotion is exercised by five tests and by the three seeded
+`errors/` entries instead of by faking a verification here — forcing a promote to
+demonstrate the feature is precisely what the gate exists to prevent.
+
 ## Verifying a change
 
 ```sh
