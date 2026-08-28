@@ -41,6 +41,18 @@ DEAD_ENTRY_RE = re.compile(
 MISSING_FILE_RE = re.compile(r"(File|Folder) \"([^\"]+)\" does not exist, skipping entry")
 # Below this, a repeating warning class is chatter rather than a pattern.
 WARN_CLASS_FLOOR = 3
+# Error-severity lines that are known, understood, and harmless. Reported as INFO with the
+# explanation rather than dropped, which is how this project treats the benign SELinux
+# denials too: counted and named, never hidden. Suppressing an error silently is how a
+# checker goes blind, and warning about a known-normal one is how its exit code stops
+# being read - so neither.
+BENIGN_ERRORS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"setReportingLevelFromRetroDeckConfig.*RETRODECK_CONFIG_HOME", re.IGNORECASE),
+        "RetroDECK startup quirk: the variable is unset when ES-DE reads it, so logging "
+        "falls back to DEBUG. Consequence is a verbose log and nothing else",
+    ),
+)
 LAUNCH_RE = re.compile(r"Launching game .*? from system '?([\w-]+)'?", re.IGNORECASE)
 # One pattern for "is RetroDECK running", so the checker and any writer cannot drift.
 RETRODECK_PROCESS_TERMS = ("es-de", "emulationstation", "net.retrodeck")
@@ -267,8 +279,15 @@ def _log_scan() -> list[Check]:
 
     errors: dict[str, int] = {}
     warnings: dict[str, int] = {}
+    benign: dict[str, int] = {}
     for line in lines:
         if LOG_NOISE_RE.search(line):
+            continue
+        matched_benign = next(
+            (why for pattern, why in BENIGN_ERRORS if pattern.search(line)), None
+        )
+        if matched_benign is not None:
+            benign[matched_benign] = benign.get(matched_benign, 0) + 1
             continue
         if ERROR_LINE_RE.search(line):
             key = _normalise(line)[:180]
@@ -276,6 +295,9 @@ def _log_scan() -> list[Check]:
         elif WARN_LINE_RE.search(line):
             key = _normalise(line)[:180]
             warnings[key] = warnings.get(key, 0) + 1
+
+    for why, count in sorted(benign.items(), key=lambda item: -item[1]):
+        checks.append(Check("INFO", "Known-benign log error", f"{why} ({count}x)"))
 
     if errors:
         for key, count in sorted(errors.items(), key=lambda item: -item[1])[:6]:

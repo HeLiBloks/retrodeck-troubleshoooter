@@ -293,3 +293,28 @@ class TwoLogFormatsTest(ProbeTestCase):
         match = emulation.MISSING_FILE_RE.search(line)
         self.assertIsNotNone(match)
         self.assertEqual(match.group(2), "/roms/neogeo/jonasindiana.zip")
+
+    def test_a_known_benign_error_is_info_not_warn(self):
+        """Warning on a known-normal line is how an exit code stops being read.
+
+        The mirror mistake is dropping it silently, which is how a checker goes blind. So
+        it is reported, with the reason, at INFO — the same treatment the benign SELinux
+        denials get.
+        """
+        line = (
+            "[ERROR] [ES-DE] setReportingLevelFromRetroDeckConfig: Failed to read "
+            "rd_logging_level - RETRODECK_CONFIG_HOME environment variable not set."
+        )
+        self.assertTrue(
+            any(pattern.search(line) for pattern, _ in emulation.BENIGN_ERRORS),
+            "the RetroDECK logging-level fallback must be recognised as benign",
+        )
+
+    def test_the_benign_list_is_narrow_enough_to_keep_a_real_error(self):
+        real = "[ERROR] [ES-DE] Couldn't open gamelist.xml for writing"
+        self.assertFalse(any(pattern.search(real) for pattern, _ in emulation.BENIGN_ERRORS))
+
+    def test_every_benign_entry_carries_an_explanation(self):
+        """An unexplained suppression is indistinguishable from a bug."""
+        for pattern, why in emulation.BENIGN_ERRORS:
+            self.assertGreater(len(why.split()), 5, f"{pattern.pattern} has no real explanation")
