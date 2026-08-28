@@ -105,6 +105,32 @@ warning stopped appearing. `rdtroubleshoot input` reports `every connected pad h
 matching profile`. Re-confirmed 2026-08-28: the DS4 profile is still bound as Player1 with
 a keyboard as Player2.
 
+### The id must be derived from the connected device, not from the pad model
+
+Two pads of the same model can produce different ids, because the `version` field is part
+of the GUID and varies with firmware or connection route. Measured on this machine: a
+DualShock 4 has been seen reporting version `8111` and `6801`, giving
+`...c405-000011810000` and `...c405-000000016800` for the same physical controller. So a
+profile copied from a note, or derived from "it is a DS4", can silently fail to match.
+
+Always read the four ids from the device's own `/sys/class/input/inputN/id/` directory, or
+let `rdtroubleshoot input` do it — it derives the id for each pad that is actually connected.
+
+### Severity: this is only the black-screen case when nothing else is bound
+
+An unmatched pad has two quite different consequences, and it is worth knowing which you
+have before believing the symptom:
+
+- **No keyboard profile, `enable_keyboard: false`, and `docked_mode: true`** — nothing is
+  bound and nothing can be. The game loads to a black screen and waits for ever. This is
+  the case this entry is named for.
+- **A keyboard profile bound, or `docked_mode: false` leaving the Handheld slot** — the pad
+  will not work, but the game starts and responds. Annoying, not fatal.
+
+`rdtroubleshoot input` reports the first as FAIL and the second as WARN, and says which
+fallback it found. Worth checking, because the recorded 2026-08-16 state had no fallback at
+all and the machine's current one has both.
+
 ### When this entry does not fit
 
 - No `Hid Remap` line in the log at all — look for a real `|E|`, and check the GPU lines.
@@ -116,6 +142,7 @@ a keyboard as Player2.
 
 ### Sightings
 
+- **2026-08-28** — Caught live by 'rdtroubleshoot -q --kb' before the user hit it: a 'Generic X-Box pad' (045e:02a1) had been plugged in with no matching profile, while Config.json held only a DualShock 4 and a keyboard binding. Fixed by adding a Player1 profile with the id derived from the pad's own sysfs (0-00000003-045e-0000-a102-000030030000), copying the existing pad's SDL-normalised mapping; the DS4 profile was moved to Player3 rather than discarded. Also noted: this machine now has enable_keyboard=true and docked_mode=false, so a fallback existed and the true severity was WARN, not the black screen - the checker's severity logic was corrected to distinguish the two.
 - **2026-08-28** — re-confirmed still fixed; profile intact, no pad connected at the time,
   and the checker correctly declines to compare bindings against nothing.
 - **2026-08-16** — DualShock 4 connected and visible, only an X360 profile present. 2m37s

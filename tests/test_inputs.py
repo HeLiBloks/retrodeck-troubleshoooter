@@ -50,3 +50,31 @@ class ControllerGuidTest(ProbeTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InputSeverityTest(ProbeTestCase):
+    """An unmatched pad is only the black-screen case when nothing else is bound.
+
+    Reporting FAIL either way overstates the case where a keyboard is bound, and — worse —
+    cites the black-screen symptom for a situation that will not produce it. The distinction
+    is what makes the level worth reading.
+    """
+
+    def test_the_version_field_varies_for_one_pad_model(self):
+        """So the id must be derived from the CONNECTED device, never from the model.
+
+        A DualShock 4 on this machine has been seen reporting version 0x8111 and 0x6801,
+        giving different ids for the same physical model.
+        """
+        a = controller_guid(0x0003, 0x054C, 0x05C4, 0x8111)
+        b = controller_guid(0x0003, 0x054C, 0x05C4, 0x6801)
+        self.assertNotEqual(a, b)
+        self.assertTrue(a.startswith("0-00000003-054c-0000-c405-"))
+        self.assertTrue(b.startswith("0-00000003-054c-0000-c405-"))
+
+    def test_an_xbox_pad_derives_the_id_that_was_applied(self):
+        """bustype 0003, vendor 045e, product 02a1, version 0330 — read from sysfs."""
+        self.assertEqual(
+            controller_guid(0x0003, 0x045E, 0x02A1, 0x0330),
+            "0-00000003-045e-0000-a102-000030030000",
+        )

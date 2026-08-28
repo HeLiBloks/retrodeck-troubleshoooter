@@ -247,18 +247,46 @@ def _ryujinx_check(pads: list[Pad]) -> list[Check]:
     if not unmatched:
         checks.append(Check("PASS", "Ryujinx input match", "every connected pad has a matching profile"))
         return checks
+
+    # **Severity depends on whether anything else can drive the game.** With a keyboard
+    # profile bound and docked mode off, an unmatched pad means "this pad will not work" -
+    # annoying, but the game starts and responds. With no fallback at all, nothing is bound
+    # and the game loads to a black screen and waits for ever. Calling both FAIL overstates
+    # the first and, worse, cites the black-screen symptom for a case that will not show it.
+    has_fallback = keyboard or enable_keyboard or not docked
     for pad in unmatched:
         expected = controller_guid(pad.bustype, pad.vendor, pad.product, pad.version)
-        checks.append(
-            Check(
-                "FAIL",
-                "Ryujinx input match",
-                f"'{pad.name}' ({pad.ids}) is connected but no profile matches it - "
-                f"this is the black-screen-after-loading symptom",
-                f"bind it in the GUI, or add a profile with id {expected} "
-                f"(close Ryujinx first - it rewrites Config.json on exit)",
-            )
+        fix = (
+            f"bind it in the GUI, or add a profile with id {expected} "
+            f"(close Ryujinx first - it rewrites Config.json on exit)"
         )
+        if has_fallback:
+            how = []
+            if keyboard or enable_keyboard:
+                how.append("a keyboard binding")
+            if not docked:
+                how.append("the Handheld slot")
+            checks.append(
+                Check(
+                    "WARN",
+                    "Ryujinx input match",
+                    f"'{pad.name}' ({pad.ids}) is connected but no profile matches it, so that pad "
+                    f"will not work - the game will still start, because {' and '.join(how)} "
+                    f"remain available",
+                    fix,
+                )
+            )
+        else:
+            checks.append(
+                Check(
+                    "FAIL",
+                    "Ryujinx input match",
+                    f"'{pad.name}' ({pad.ids}) is connected, no profile matches it, and there is "
+                    f"no keyboard or Handheld fallback - the game will load to a black screen and "
+                    f"wait for input for ever",
+                    fix,
+                )
+            )
     if not keyboard and not enable_keyboard:
         checks.append(
             Check(
