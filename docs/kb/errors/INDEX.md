@@ -37,3 +37,7 @@ the other.
 | Hundreds of `[WARN]` lines at every ES-DE startup | [gdrom-chd-duplicated-into-naomi](emulation/gdrom-chd-duplicated-into-naomi.md) |
 | GD-ROM discs appear under both `naomi/` and `naomigd/` | [gdrom-chd-duplicated-into-naomi](emulation/gdrom-chd-duplicated-into-naomi.md) |
 | A `.chd` sits in a gamelist as if it were a game | [gdrom-chd-duplicated-into-naomi](emulation/gdrom-chd-duplicated-into-naomi.md) |
+| "0MB of free memory" / "Not Enough RAM" dialog, then the game exits | [retail-freespace2-not-enough-ram](emulation/retail-freespace2-not-enough-ram.md) |
+| FreeSpace 2 will not start from the Ports system | [retail-freespace2-not-enough-ram](emulation/retail-freespace2-not-enough-ram.md) |
+| A Ports `.sh` launcher exits 0 with no error and ES-DE still records play time | [retail-freespace2-not-enough-ram](emulation/retail-freespace2-not-enough-ram.md) |
+| An old Windows game refuses to start on a machine with lots of RAM | [retail-freespace2-not-enough-ram](emulation/retail-freespace2-not-enough-ram.md) |
