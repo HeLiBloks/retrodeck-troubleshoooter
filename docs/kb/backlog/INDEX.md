@@ -12,7 +12,8 @@ A second sighting on an entry here is the cue to investigate and promote it.
 | c64 (or another system) shows persistently low metadata coverage | [c64-roms-without-extension-invisible](emulation/c64-roms-without-extension-invisible.md) |
 | ROM files with no filename extension at all (`1942`, `BRUCELEE`) | [c64-roms-without-extension-invisible](emulation/c64-roms-without-extension-invisible.md) |
 | Re-scraping a system never closes its coverage gap | [c64-roms-without-extension-invisible](emulation/c64-roms-without-extension-invisible.md) |
-| `Error!` dialog with only Exit and Debug, game window still open behind it | [fso-fatal-error-zero-byte-anim](emulation/fso-fatal-error-zero-byte-anim.md) |
-| "animation (...) has invalid fps of zero, fix this!" | [fso-fatal-error-zero-byte-anim](emulation/fso-fatal-error-zero-byte-anim.md) |
-| FreeSpace 2 launches fine then dies minutes later on a briefing | [fso-fatal-error-zero-byte-anim](emulation/fso-fatal-error-zero-byte-anim.md) |
-| A game runs off loose data because its archives were stripped to index-only stubs | [fso-fatal-error-zero-byte-anim](emulation/fso-fatal-error-zero-byte-anim.md) |
+| A game runs for a while, then dies at the same point every time | [zero-byte-asset-stub-fatal-error](emulation/zero-byte-asset-stub-fatal-error.md) |
+| An engine `Error!` dialog offering only Exit and Debug, game window still open | [zero-byte-asset-stub-fatal-error](emulation/zero-byte-asset-stub-fatal-error.md) |
+| The engine names an asset file it cannot parse (`invalid fps of zero`, `malformed`) | [zero-byte-asset-stub-fatal-error](emulation/zero-byte-asset-stub-fatal-error.md) |
+| 0-byte files in a game's data directory | [zero-byte-asset-stub-fatal-error](emulation/zero-byte-asset-stub-fatal-error.md) |
+| A game archive lists files it does not actually contain | [zero-byte-asset-stub-fatal-error](emulation/zero-byte-asset-stub-fatal-error.md) |

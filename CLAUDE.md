@@ -193,6 +193,7 @@ docs/
     backlog/<area>/          open cases, no fix yet
     evals/                   the recorded case that proved each fix
   EMULATION.md              reference docs: the findings, with the measurements behind them
+  DRIVING-A-GAME-GUI.md     reaching a game's own screens over SSH, when only the game knows
 tests/                      stdlib unittest; no network, no box required
 tools/check.sh              compile + suite
 ```
